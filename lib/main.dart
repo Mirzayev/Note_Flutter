@@ -20,7 +20,6 @@ class WaterReminderApp extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
             ),
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-            // ignore: deprecated_member_use
             shadowColor: Colors.blue.withOpacity(0.5),
             elevation: 5,
           ),
@@ -35,19 +34,15 @@ class WaterReminderPage extends StatefulWidget {
   const WaterReminderPage({super.key});
 
   @override
-  // ignore: library_private_types_in_public_api
   _WaterReminderPageState createState() => _WaterReminderPageState();
 }
 
 class _WaterReminderPageState extends State<WaterReminderPage> {
   final List<Map<String, dynamic>> _reminders = [];
   final TextEditingController _amountController = TextEditingController();
-  final TextEditingController _goalController = TextEditingController(
-    text: '2000',
-  );
   double _dailyGoal = 2000;
-  final List<String> _goalOptions = ['1000', '1500', '2000', '2500', '3000'];
-  DateTime _selectedTime = DateTime.now();
+  final List<double> _goalOptions = [1000, 1500, 2000, 2500, 3000];
+  TimeOfDay _selectedTime = TimeOfDay.now();
 
   void _addReminder() {
     if (_amountController.text.isEmpty ||
@@ -62,13 +57,23 @@ class _WaterReminderPageState extends State<WaterReminderPage> {
       return;
     }
 
+    final now = DateTime.now();
+    final reminderTime = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      _selectedTime.hour,
+      _selectedTime.minute,
+    );
+
     setState(() {
       _reminders.add({
-        'time': _selectedTime,
+        'time': reminderTime,
         'amount': double.parse(_amountController.text),
       });
       _amountController.clear();
     });
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Eslatma qo\'shildi!'),
@@ -76,15 +81,6 @@ class _WaterReminderPageState extends State<WaterReminderPage> {
         behavior: SnackBarBehavior.floating,
       ),
     );
-  }
-
-  void _updateGoal() {
-    if (_goalController.text.isNotEmpty &&
-        double.tryParse(_goalController.text) != null) {
-      setState(() {
-        _dailyGoal = double.parse(_goalController.text);
-      });
-    }
   }
 
   double _getTotalWater() {
@@ -104,41 +100,37 @@ class _WaterReminderPageState extends State<WaterReminderPage> {
   }
 
   Color _getProgressColor(double progress) {
-    if (progress >= 0.8) return Colors.green;
-    if (progress >= 0.5) return Colors.yellow;
+    if (progress >= 1.0) return Colors.green;
+    if (progress >= 0.7) return Colors.lightGreen;
+    if (progress >= 0.4) return Colors.orange;
     return Colors.red;
   }
 
+  String _getProgressText(double today, double goal) {
+    if (today >= goal) {
+      return 'Normadan ${(today - goal).toStringAsFixed(0)} ml ortiqcha';
+    } else {
+      return 'Normani bajarish uchun   ${(goal - today).toStringAsFixed(0)} ml ichish kerak';
+    }
+  }
+
   Future<void> _selectTime(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
+    final TimeOfDay? picked = await showTimePicker(
       context: context,
-      initialDate: _selectedTime,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 7)),
+      initialTime: _selectedTime,
     );
     if (picked != null) {
-      final TimeOfDay? time = await showTimePicker(
-        // ignore: use_build_context_synchronously
-        context: context,
-        initialTime: TimeOfDay.fromDateTime(_selectedTime),
-      );
-      if (time != null) {
-        setState(() {
-          _selectedTime = DateTime(
-            picked.year,
-            picked.month,
-            picked.day,
-            time.hour,
-            time.minute,
-          );
-        });
-      }
+      setState(() {
+        _selectedTime = picked;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    double progress = (_getTodayWater() / _dailyGoal).clamp(0.0, 1.0);
+    final todayWater = _getTodayWater();
+    final progress = (todayWater / _dailyGoal).clamp(0.0, 1.0);
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('Suv Ichish Eslatmasi'),
@@ -171,69 +163,95 @@ class _WaterReminderPageState extends State<WaterReminderPage> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  // ignore: deprecated_member_use
                   color: Colors.white.withOpacity(0.9),
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Column(
                       children: [
-                        DropdownButton<String>(
-                          value: _goalController.text,
+                        DropdownButton<double>(
+                          value: _dailyGoal,
                           onChanged: (value) {
                             setState(() {
-                              _goalController.text = value!;
-                              _updateGoal();
+                              _dailyGoal = value!;
                             });
                           },
-                          items:
-                              _goalOptions
-                                  .map(
-                                    (goal) => DropdownMenuItem(
-                                      value: goal,
-                                      child: Text('$goal ml'),
-                                    ),
-                                  )
-                                  .toList(),
+                          items: _goalOptions
+                              .map((goal) => DropdownMenuItem(
+                                    value: goal,
+                                    child: Text('$goal ml'),
+                                  ))
+                              .toList(),
                           isExpanded: true,
                           hint: const Text('Kunlik maqsad'),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 16),
                         TextField(
                           controller: _amountController,
                           decoration: const InputDecoration(
                             labelText: 'Suv miqdori (ml)',
                             border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.water_drop),
                           ),
                           keyboardType: TextInputType.number,
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 16),
                         ElevatedButton(
                           onPressed: () => _selectTime(context),
                           child: Text(
-                            'Vaqt: ${_selectedTime.toString().substring(0, 16)}',
+                            'Vaqt: ${_selectedTime.format(context)}',
                             style: const TextStyle(fontSize: 16),
                           ),
                         ),
                         const SizedBox(height: 20),
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 500),
-                          child: CircularProgressIndicator(
-                            value: progress,
-                            backgroundColor: Colors.grey[300],
-                            color: _getProgressColor(progress),
-                            strokeWidth: 10,
-                          ),
+                        Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            SizedBox(
+                              width: 120,
+                              height: 120,
+                              child: CircularProgressIndicator(
+                                value: progress,
+                                backgroundColor: Colors.grey[300],
+                                color: _getProgressColor(progress),
+                                strokeWidth: 12,
+                              ),
+                            ),
+                            Column(
+                              children: [
+                                Text(
+                                  '${todayWater.toStringAsFixed(0)} ml',
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  '/ ${_dailyGoal.toStringAsFixed(0)} ml',
+                                  style: const TextStyle(fontSize: 16),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 10),
                         Text(
-                          'Bugun: ${_getTodayWater().toStringAsFixed(0)} / $_dailyGoal ml',
+                          _getProgressText(todayWater, _dailyGoal),
                           style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
                           ),
+                          textAlign: TextAlign.center,
                         ),
                       ],
                     ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: _addReminder,
+                  child: const Text(
+                    'Eslatma qo\'shish',
+                    style: TextStyle(fontSize: 16),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -242,7 +260,6 @@ class _WaterReminderPageState extends State<WaterReminderPage> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  // ignore: deprecated_member_use
                   color: Colors.white.withOpacity(0.9),
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
@@ -258,54 +275,63 @@ class _WaterReminderPageState extends State<WaterReminderPage> {
                         const SizedBox(height: 10),
                         Text(
                           'Umumiy suv: ${_getTotalWater().toStringAsFixed(0)} ml',
+                          style: const TextStyle(fontSize: 16),
                         ),
                         Text(
-                          'Bugungi suv: ${_getTodayWater().toStringAsFixed(0)} ml',
+                          'Bugungi suv: ${todayWater.toStringAsFixed(0)} ml',
+                          style: const TextStyle(fontSize: 16),
                         ),
                       ],
                     ),
                   ),
                 ),
                 const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: _addReminder,
-                  child: const Text(
-                    'Eslatma qo\'shish',
-                    style: TextStyle(fontSize: 16),
+                const Text(
+                  'Eslatmalar tarixi',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 10),
                 SizedBox(
-                  height: 300, // Jurnal uchun cheklangan balandlik
-                  child: ListView.builder(
-                    itemCount: _reminders.length,
-                    itemBuilder: (context, index) {
-                      return Card(
-                        margin: const EdgeInsets.symmetric(vertical: 5),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
+                  height: 300,
+                  child: _reminders.isEmpty
+                      ? const Center(
+                          child: Text('Hozircha eslatmalar mavjud emas'),
+                        )
+                      : ListView.builder(
+                          itemCount: _reminders.length,
+                          itemBuilder: (context, index) {
+                            final reminder = _reminders[index];
+                            return Card(
+                              margin: const EdgeInsets.symmetric(vertical: 5),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              color: Colors.white.withOpacity(0.85),
+                              child: ListTile(
+                                leading: const Icon(Icons.water_drop,
+                                    color: Colors.blue),
+                                title: Text(
+                                  '${reminder['amount'].toStringAsFixed(0)} ml',
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                subtitle: Text(
+                                  'Vaqt: ${TimeOfDay.fromDateTime(reminder['time']).format(context)}',
+                                ),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.delete, color: Colors.red),
+                                  onPressed: () {
+                                    setState(() {
+                                      _reminders.removeAt(index);
+                                    });
+                                  },
+                                ),
+                              ),
+                            );
+                          },
                         ),
-                        // ignore: deprecated_member_use
-                        color: Colors.white.withOpacity(0.85),
-                        child: ListTile(
-                          title: Text(
-                            '${_reminders[index]['amount'].toStringAsFixed(0)} ml',
-                          ),
-                          subtitle: Text(
-                            'Vaqt: ${_reminders[index]['time'].toString().substring(0, 16)}',
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () {
-                              setState(() {
-                                _reminders.removeAt(index);
-                              });
-                            },
-                          ),
-                        ),
-                      );
-                    },
-                  ),
                 ),
               ],
             ),
